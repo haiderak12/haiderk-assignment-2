@@ -8,9 +8,10 @@ class KMeans:
         self.max_iters = max_iters
         self.centroids = None
 
-    def initialize_centroids(self, data):
+    def initialize_centroids(self, data, manual_centroids=None):
         if self.init_method == "random":
             self.centroids = data[np.random.choice(data.shape[0], self.n_clusters, replace=False)]
+        
         elif self.init_method == "farthest_first":
             self.centroids = [data[np.random.randint(data.shape[0])]]
             for _ in range(1, self.n_clusters):
@@ -18,7 +19,18 @@ class KMeans:
                 next_centroid = data[np.argmax(dist_sq)]
                 self.centroids.append(next_centroid)
             self.centroids = np.array(self.centroids)
-        # Add k-means++ and manual later based on the UI
+        
+        elif self.init_method == "kmeans++":
+            self.centroids = [data[np.random.randint(data.shape[0])]]
+            for _ in range(1, self.n_clusters):
+                dist_sq = np.min([np.sum((data - centroid) ** 2, axis=1) for centroid in self.centroids], axis=0)
+                probabilities = dist_sq / dist_sq.sum()
+                next_centroid = data[np.random.choice(data.shape[0], p=probabilities)]
+                self.centroids.append(next_centroid)
+            self.centroids = np.array(self.centroids)
+        
+        elif self.init_method == "manual" and manual_centroids is not None:
+            self.centroids = np.array(manual_centroids)
 
     def assign_clusters(self, data):
         distances = np.sqrt(((data - self.centroids[:, np.newaxis])**2).sum(axis=2))
@@ -28,8 +40,8 @@ class KMeans:
         new_centroids = np.array([data[labels == i].mean(axis=0) for i in range(self.n_clusters)])
         return new_centroids
 
-    def fit(self, data):
-        self.initialize_centroids(data)
+    def fit(self, data, manual_centroids=None):
+        self.initialize_centroids(data, manual_centroids=manual_centroids)
         for i in range(self.max_iters):
             labels = self.assign_clusters(data)
             new_centroids = self.update_centroids(data, labels)

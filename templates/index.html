@@ -1,135 +1,157 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>KMeans Clustering Algorithm</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    </head>
-    <body>
-        <h1>KMeans Clustering Algorithm</h1>
-        <form id="controls">
-            <label for="n_clusters">Number of Clusters (k):</label>
-            <input type="number" id="n_clusters" name="n_clusters" value="3" min="1" max="10">
-            <label for="init_method">Initialization Method:</label>
-            <select id="init_method" name="init_method">
-                <option value="random">Random</option>
-                <option value="farthest_first">Farthest First</option>
-            </select>
-            <button type="button" id="run">Run KMeans</button>
-            <button type="button" id="generate_data">Generate New Dataset</button>
-        </form>
-        <canvas id="chart" width="400" height="400"></canvas>
-        <script>
-            let chartInstance;
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KMeans Clustering Algorithm</title>
+    
+    <!-- Link to the external CSS file -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    
+    <!-- Include Chart.js from a CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>KMeans Clustering Algorithm</h1>
+    
+    <form id="controls">
+        <label for="n_clusters">Number of Clusters (k):</label>
+        <input type="number" id="n_clusters" name="n_clusters" value="3" min="1" max="10">
+        
+        <label for="init_method">Initialization Method:</label>
+        <select id="init_method" name="init_method">
+            <option value="random">Random</option>
+            <option value="farthest_first">Farthest First</option>
+            <option value="kmeans++">KMeans++</option>
+            <option value="manual">Manual</option>
+        </select>
+        
+        <button type="button" id="run">Run KMeans</button><br><br>
+        <button type="button" id="generate_data">Generate New Dataset</button>
+    </form>
 
-            // Plot the data points on the chart
-            function plotData(data, centroids = null, labels = null) {
-                const datasets = [];
+    <canvas id="chart" width="400" height="400"></canvas>
 
-                // Create different datasets for each cluster if labels exist
-                if (labels) {
-                    const clusters = [...new Set(labels)];
-                    clusters.forEach(cluster => {
-                        const clusterData = data.filter((_, i) => labels[i] === cluster);
-                        datasets.push({
-                            label: `Cluster ${cluster + 1}`,
-                            data: clusterData.map(d => ({ x: d[0], y: d[1] })),
-                            backgroundColor: getRandomColor(),
-                            borderColor: getRandomColor(),
-                            pointRadius: 5
-                        });
-                    });
-                } else {
-                    // Plot data points without clustering (initial dataset)
+    <script>
+        let chartInstance;
+        let manualCentroids = [];
+
+        // Plot the data points on the chart
+        function plotData(data, centroids = null, labels = null) {
+            const datasets = [];
+
+            // Create different datasets for each cluster if labels exist
+            if (labels) {
+                const clusters = [...new Set(labels)];
+                clusters.forEach(cluster => {
+                    const clusterData = data.filter((_, i) => labels[i] === cluster);
                     datasets.push({
-                        label: 'Data Points',
-                        data: data.map(d => ({ x: d[0], y: d[1] })),
-                        backgroundColor: 'rgba(0, 123, 255, 0.6)',
-                        borderColor: 'rgba(0, 123, 255, 1)',
+                        label: `Cluster ${cluster + 1}`,
+                        data: clusterData.map(d => ({ x: d[0], y: d[1] })),
+                        backgroundColor: getRandomColor(),
+                        borderColor: getRandomColor(),
                         pointRadius: 5
                     });
-                }
+                });
+            } else {
+                // Plot data points without clustering (initial dataset)
+                datasets.push({
+                    label: 'Data Points',
+                    data: data.map(d => ({ x: d[0], y: d[1] })),
+                    backgroundColor: 'rgba(0, 123, 255, 0.6)',
+                    borderColor: 'rgba(0, 123, 255, 1)',
+                    pointRadius: 5
+                });
+            }
 
-                // Plot centroids if provided
-                if (centroids) {
-                    datasets.push({
-                        label: 'Centroids',
-                        data: centroids.map(c => ({ x: c[0], y: c[1] })),
-                        backgroundColor: 'rgba(255, 0, 0, 1)',
-                        borderColor: 'rgba(255, 0, 0, 1)',
-                        pointRadius: 10,
-                        pointStyle: 'cross'
-                    });
-                }
+            // Plot centroids if provided
+            if (centroids) {
+                datasets.push({
+                    label: 'Centroids',
+                    data: centroids.map(c => ({ x: c[0], y: c[1] })),
+                    backgroundColor: 'rgba(255, 0, 0, 1)',
+                    borderColor: 'rgba(255, 0, 0, 1)',
+                    pointRadius: 10,
+                    pointStyle: 'cross'
+                });
+            }
 
-                // Destroy the previous chart instance before creating a new one
-                if (chartInstance) {
-                    chartInstance.destroy();
-                }
+            // Destroy the previous chart instance before creating a new one
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
 
-                // Create a new scatter plot with Chart.js
-                const ctx = document.getElementById('chart').getContext('2d');
-                chartInstance = new Chart(ctx, {
-                    type: 'scatter',
-                    data: {
-                        datasets: datasets
-                    },
-                    options: {
-                        responsive: true,
-                        scales: {
-                            x: {
-                                type: 'linear',
-                                position: 'bottom',
-                                title: {
-                                    display: true,
-                                    text: 'X Axis'
-                                }
-                            },
-                            y: {
-                                title: {
-                                    display: true,
-                                    text: 'Y Axis'
-                                }
+            // Create a new scatter plot with Chart.js
+            const ctx = document.getElementById('chart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            title: {
+                                display: true,
+                                text: 'X Axis'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Y Axis'
                             }
                         }
+                    },
+                    onClick: function(evt) {
+                        const activePoints = chartInstance.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, false);
+                        if (activePoints.length && document.getElementById('init_method').value === 'manual') {
+                            const chartPosition = chartInstance.scales.x.getValueForPixel(evt.offsetX);
+                            const chartValue = chartInstance.scales.y.getValueForPixel(evt.offsetY);
+                            manualCentroids.push([chartPosition, chartValue]);
+                            plotData(data, manualCentroids);  // Update plot to show selected centroids
+                        }
                     }
-                });
-            }
-
-            // Function to generate random colors for clusters
-            function getRandomColor() {
-                const letters = '0123456789ABCDEF';
-                let color = '#';
-                for (let i = 0; i < 6; i++) {
-                    color += letters[Math.floor(Math.random() * 16)];
                 }
-                return color;
+            });
+        }
+
+        // Function to generate random colors for clusters
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
             }
+            return color;
+        }
 
-            // Example usage: plot some random initial data points
-            document.getElementById('generate_data').addEventListener('click', async () => {
-                const response = await fetch('/generate_data', { method: 'POST' });
-                const data = await response.json();
-                plotData(data);
+        // Generate new random dataset
+        document.getElementById('generate_data').addEventListener('click', async () => {
+            const response = await fetch('/generate_data', { method: 'POST' });
+            const data = await response.json();
+            manualCentroids = [];  // Reset manual centroids
+            plotData(data);
+        });
+
+        // Run KMeans clustering with selected initialization method
+        document.getElementById('run').addEventListener('click', async () => {
+            const n_clusters = document.getElementById('n_clusters').value;
+            const init_method = document.getElementById('init_method').value;
+            const data = chartInstance.data.datasets[0].data.map(p => [p.x, p.y]); // Get current data
+
+            const response = await fetch('/run_kmeans', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ n_clusters, init_method, data, manual_centroids: manualCentroids })
             });
 
-            // Example usage: plot data with centroids after KMeans algorithm
-            document.getElementById('run').addEventListener('click', async () => {
-                const n_clusters = document.getElementById('n_clusters').value;
-                const init_method = document.getElementById('init_method').value;
-                const data = chartInstance.data.datasets[0].data.map(p => [p.x, p.y]); // Get current data
-
-                const response = await fetch('/run_kmeans', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ n_clusters, init_method, data })
-                });
-
-                const result = await response.json();
-                plotData(data, result.centroids, result.labels);
-            });
-        </script>
-    </body>
+            const result = await response.json();
+            plotData(data, result.centroids, result.labels);
+        });
+    </script>
+</body>
 </html>
