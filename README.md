@@ -1,5 +1,5 @@
 ﻿# haiderk-assignment-2
 
 To run, enter in terminal:
->> make install
->> make run
+$ make install
+$ make run
