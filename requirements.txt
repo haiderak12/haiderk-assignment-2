@@ -1,2 +1,4 @@
 flask
 numpy
+scikit-learn
+flask-session

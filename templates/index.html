@@ -1,157 +1,197 @@
+<!-- templates/index.html -->
+
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KMeans Clustering Algorithm</title>
-    
-    <!-- Link to the external CSS file -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    
-    <!-- Include Chart.js from a CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>KMeans Clustering Visualization</title>
+    <!-- Include Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <!-- Include Bootstrap CSS and JS -->
+    <link rel="stylesheet"
+          href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
 </head>
+
 <body>
-    <h1>KMeans Clustering Algorithm</h1>
-    
-    <form id="controls">
-        <label for="n_clusters">Number of Clusters (k):</label>
-        <input type="number" id="n_clusters" name="n_clusters" value="3" min="1" max="10">
-        
+<div class="container">
+    <h1>KMeans Clustering Visualization</h1>
+    <div class="form-group">
         <label for="init_method">Initialization Method:</label>
-        <select id="init_method" name="init_method">
+        <select id="init_method" class="form-control">
             <option value="random">Random</option>
-            <option value="farthest_first">Farthest First</option>
+            <option value="farthest">Farthest First</option>
             <option value="kmeans++">KMeans++</option>
             <option value="manual">Manual</option>
         </select>
-        
-        <button type="button" id="run">Run KMeans</button><br><br>
-        <button type="button" id="generate_data">Generate New Dataset</button>
-    </form>
+    </div>
+    <div class="form-group">
+        <label for="k_value">Number of Clusters (k):</label>
+        <input type="number" id="k_value" class="form-control" value="3" min="1">
+    </div>
+    <button id="generate_data" class="btn btn-primary">Generate New Dataset</button>
+    <button id="initialize" class="btn btn-success">Initialize</button>
+    <button id="step" class="btn btn-info">Step</button>
+    <button id="run" class="btn btn-warning">Run to Convergence</button>
+    <button id="reset" class="btn btn-danger">Reset</button>
+    <div id="plot"></div>
+</div>
 
-    <canvas id="chart" width="400" height="400"></canvas>
+<!-- Include jQuery -->
+<script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+<script>
+    var data = [];
 
-    <script>
-        let chartInstance;
-        let manualCentroids = [];
+    $(document).ready(function() {
+        $('#generate_data').click(function() {
+            $.post('/generate_data', function(response) {
+                data = response.data;
+                plotData(data);
+            });
+        });
 
-        // Plot the data points on the chart
-        function plotData(data, centroids = null, labels = null) {
-            const datasets = [];
+        // Automatically generate data on page load
+        $('#generate_data').click();
 
-            // Create different datasets for each cluster if labels exist
-            if (labels) {
-                const clusters = [...new Set(labels)];
-                clusters.forEach(cluster => {
-                    const clusterData = data.filter((_, i) => labels[i] === cluster);
-                    datasets.push({
-                        label: `Cluster ${cluster + 1}`,
-                        data: clusterData.map(d => ({ x: d[0], y: d[1] })),
-                        backgroundColor: getRandomColor(),
-                        borderColor: getRandomColor(),
-                        pointRadius: 5
-                    });
+        $('#initialize').click(function() {
+            let k = $('#k_value').val();
+            let init_method = $('#init_method').val();
+
+            if (init_method === 'manual') {
+                alert('Click on the plot to select centroids');
+                var centroids = [];
+                var clicks = 0;
+                var k_value = parseInt(k);
+
+                $('#plot').off('click');
+                $('#plot').on('plotly_click', function(event, eventdata) {
+                    let x = event.points[0].x;
+                    let y = event.points[0].y;
+                    centroids.push([x, y]);
+                    clicks += 1;
+                    plotData(data, centroids);
+
+                    if (clicks === k_value) {
+                        // Send centroids to server
+                        $.ajax({
+                            url: '/initialize',
+                            method: 'POST',
+                            data: {
+                                k: k,
+                                init_method: init_method
+                            },
+                            success: function(response) {
+                                // Now set centroids
+                                $.ajax({
+                                    url: '/set_centroids',
+                                    method: 'POST',
+                                    contentType: 'application/json',
+                                    data: JSON.stringify({'centroids': centroids}),
+                                    success: function(response) {
+                                        alert('Centroids set. Ready to step through the algorithm.');
+                                    }
+                                });
+                            }
+                        });
+                        $('#plot').off('plotly_click');
+                    }
                 });
             } else {
-                // Plot data points without clustering (initial dataset)
-                datasets.push({
-                    label: 'Data Points',
-                    data: data.map(d => ({ x: d[0], y: d[1] })),
-                    backgroundColor: 'rgba(0, 123, 255, 0.6)',
-                    borderColor: 'rgba(0, 123, 255, 1)',
-                    pointRadius: 5
-                });
-            }
-
-            // Plot centroids if provided
-            if (centroids) {
-                datasets.push({
-                    label: 'Centroids',
-                    data: centroids.map(c => ({ x: c[0], y: c[1] })),
-                    backgroundColor: 'rgba(255, 0, 0, 1)',
-                    borderColor: 'rgba(255, 0, 0, 1)',
-                    pointRadius: 10,
-                    pointStyle: 'cross'
-                });
-            }
-
-            // Destroy the previous chart instance before creating a new one
-            if (chartInstance) {
-                chartInstance.destroy();
-            }
-
-            // Create a new scatter plot with Chart.js
-            const ctx = document.getElementById('chart').getContext('2d');
-            chartInstance = new Chart(ctx, {
-                type: 'scatter',
-                data: {
-                    datasets: datasets
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        x: {
-                            type: 'linear',
-                            position: 'bottom',
-                            title: {
-                                display: true,
-                                text: 'X Axis'
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Y Axis'
-                            }
-                        }
+                $.ajax({
+                    url: '/initialize',
+                    method: 'POST',
+                    data: {
+                        k: k,
+                        init_method: init_method
                     },
-                    onClick: function(evt) {
-                        const activePoints = chartInstance.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, false);
-                        if (activePoints.length && document.getElementById('init_method').value === 'manual') {
-                            const chartPosition = chartInstance.scales.x.getValueForPixel(evt.offsetX);
-                            const chartValue = chartInstance.scales.y.getValueForPixel(evt.offsetY);
-                            manualCentroids.push([chartPosition, chartValue]);
-                            plotData(data, manualCentroids);  // Update plot to show selected centroids
-                        }
+                    success: function(response) {
+                        let centroids = response.centroids;
+                        let assignments = response.assignments;
+                        plotData(data, centroids, assignments);
                     }
+                });
+            }
+        });
+
+        $('#step').click(function() {
+            $.post('/step', function(response) {
+                if (response.error) {
+                    alert(response.error);
+                } else {
+                    let centroids = response.centroids;
+                    let assignments = response.assignments;
+                    plotData(data, centroids, assignments);
                 }
             });
-        }
-
-        // Function to generate random colors for clusters
-        function getRandomColor() {
-            const letters = '0123456789ABCDEF';
-            let color = '#';
-            for (let i = 0; i < 6; i++) {
-                color += letters[Math.floor(Math.random() * 16)];
-            }
-            return color;
-        }
-
-        // Generate new random dataset
-        document.getElementById('generate_data').addEventListener('click', async () => {
-            const response = await fetch('/generate_data', { method: 'POST' });
-            const data = await response.json();
-            manualCentroids = [];  // Reset manual centroids
-            plotData(data);
         });
 
-        // Run KMeans clustering with selected initialization method
-        document.getElementById('run').addEventListener('click', async () => {
-            const n_clusters = document.getElementById('n_clusters').value;
-            const init_method = document.getElementById('init_method').value;
-            const data = chartInstance.data.datasets[0].data.map(p => [p.x, p.y]); // Get current data
-
-            const response = await fetch('/run_kmeans', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ n_clusters, init_method, data, manual_centroids: manualCentroids })
+        $('#run').click(function() {
+            $.post('/run', function(response) {
+                if (response.error) {
+                    alert(response.error);
+                } else {
+                    let centroids = response.centroids;
+                    let assignments = response.assignments;
+                    plotData(data, centroids, assignments);
+                }
             });
-
-            const result = await response.json();
-            plotData(data, result.centroids, result.labels);
         });
-    </script>
+
+        $('#reset').click(function() {
+            $.post('/reset', function(response) {
+                if (response.status === 'reset') {
+                    alert('Algorithm reset');
+                    plotData(data);
+                }
+            });
+        });
+    });
+
+    function plotData(dataPoints, centroids=[], assignments=[]) {
+        let colors = ['red', 'green', 'blue', 'purple', 'orange', 'cyan', 'magenta', 'yellow', 'black', 'grey'];
+        let marker_colors = assignments.length ? assignments.map(a => colors[a % colors.length]) : 'blue';
+
+        let trace = {
+            x: dataPoints.map(point => point[0]),
+            y: dataPoints.map(point => point[1]),
+            mode: 'markers',
+            type: 'scatter',
+            marker: {
+                color: marker_colors,
+                size: 8,
+                line: {
+                    color: 'black',
+                    width: 1
+                }
+            }
+        };
+
+        let plotData = [trace];
+
+        if (centroids.length > 0) {
+            let centroidTrace = {
+                x: centroids.map(point => point[0]),
+                y: centroids.map(point => point[1]),
+                mode: 'markers',
+                type: 'scatter',
+                marker: {
+                    symbol: 'x',
+                    color: 'black',
+                    size: 12,
+                    line: {
+                        color: 'white',
+                        width: 2
+                    }
+                }
+            };
+            plotData.push(centroidTrace);
+        }
+
+        let layout = {
+            title: 'KMeans Clustering',
+            clickmode: 'event+select'
+        };
+
+        Plotly.newPlot('plot', plotData, layout);
+    }
+</script>
 </body>
 </html>
